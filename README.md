@@ -1,3 +1,4 @@
+# Please don't push any code that does not compile! Work on your own branch!!
 
 Comment for PDC Summer School - Check out the Project_PDC_Summer_School.pdf where more detailed instruction for the final project is located
 
