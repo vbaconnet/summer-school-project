@@ -258,6 +258,8 @@ int main(int argc, char *argv[]) {
     cudaMalloc((void **)&layer_d, layer_size*sizeof(float));
     cudaMemcpy(layer_d, layer, layer_size*sizeof(float), cudaMemcpyHostToDevice);
 
+    printf("Layer size: %d\n", layer_size);
+
     /* 4. Storms simulation */
     for(int i=0; i<num_storms; i++) {
 
@@ -269,6 +271,7 @@ int main(int argc, char *argv[]) {
         int BR = (storms[i].size + TR - 1)/TR;
         dim3 gridDim(BC, BR);
 
+        printf("Storm size: %d\n", storms[i].size);
         printf("Number of threads per block: %d %d\n", TC, TR);
         printf("Number of blocks per grid:   %d %d\n", BC, BR);
 
