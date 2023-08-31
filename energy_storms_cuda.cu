@@ -278,6 +278,10 @@ int main(int argc, char *argv[]) {
         /* 4.1. Add impacts energies to layer cells */
         bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
 
+#ifdef DEBUG
+        debug_print( layer_size, layer, positions, maximum, num_storms );
+#endif
+
         cudaMemcpy(layer, layer_d, layer_size, cudaMemcpyDeviceToHost);
         cudaFree(posval_d);
 
