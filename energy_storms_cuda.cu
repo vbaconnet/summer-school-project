@@ -69,34 +69,6 @@ typedef struct {
     int *posval; // Positions and values
 } Storm;
 
-/* Perform the first stage of a storm wave. The logic here is to give 1 thread for each particle/cell
- * in a 2D way. Each thread will store the energy/position of the particle and apply it to its cell.
- * */
-__global__ void bombardment(int storm_size, int layer_size, float *layer_d, int *posval_d) {
-    int cell = blockIdx.x * blockDim.x + threadIdx.x;
-    int part = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if ( part < storm_size && cell < layer_size )
-    {
-        float energy = (float)posval_d[2*part + 1] * 1000;
-        int impact_pos = posval_d[2*part];
-
-        // Collect the energy from each particle on each cell
-        __shared__ energies[TC][TR];
-        energies[threadIdx.x][threadIdx.y] = update(cell, part, layer_size, impact_pos, energy);
-
-        // Do the reduction to sum up the energy of all particles on a given cell
-        if (threadIdx.y == 0) {
-            float sum = 0.0f;
-
-            for (int j=0; j < blockDim.y; j++)
-                sum += energies[cell][j];
-
-            atomicAdd(layer_d[cell], sum);
-        }
-    }
-}
-
 /* THIS FUNCTION CAN BE MODIFIED */
 /* Function to update a single position of the layer */
 /* This function returns 0 if the energy is lower than the threshold */
@@ -123,6 +95,34 @@ __device__ float update(int cell, int part, int layer_size, int impact_pos, floa
         return energy_k;
     } else {
         return 0.0f;
+    }
+}
+
+/* Perform the first stage of a storm wave. The logic here is to give 1 thread for each particle/cell
+ * in a 2D way. Each thread will store the energy/position of the particle and apply it to its cell.
+ * */
+__global__ void bombardment(int storm_size, int layer_size, float *layer_d, int *posval_d) {
+    int cell = blockIdx.x * blockDim.x + threadIdx.x;
+    int part = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if ( part < storm_size && cell < layer_size )
+    {
+        float energy = (float)posval_d[2*part + 1] * 1000;
+        int impact_pos = posval_d[2*part];
+
+        // Collect the energy from each particle on each cell
+        __shared__ float energies[TC][TR];
+        energies[threadIdx.x][threadIdx.y] = update(cell, part, layer_size, impact_pos, energy);
+
+        // Do the reduction to sum up the energy of all particles on a given cell
+        if (threadIdx.y == 0) {
+            float sum = 0.0f;
+
+            for (int j=0; j < blockDim.y; j++)
+                sum += energies[cell][j];
+
+            atomicAdd(layer_d[cell], sum);
+        }
     }
 }
 
