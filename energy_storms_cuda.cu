@@ -272,9 +272,12 @@ int main(int argc, char *argv[]) {
         /* 4.1. Add impacts energies to layer cells */
         bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
 
+        cudaMemcpy(layer, layer_d, layer_size, CudaMemcpyDeviceToHost)
+        cudaFree(posval_d);
+
         /* 4.2. Energy relaxation between storms */
         /* 4.2.1. Copy values to the ancillary array */
-        for( k=0; k<layer_size; k++ ) 
+        for( k=0; k<layer_size; k++ )
             layer_copy[k] = layer[k];
 
         /* 4.2.2. Update layer using the ancillary values.
@@ -294,7 +297,6 @@ int main(int argc, char *argv[]) {
         }
 
 
-        cudaFree(posval_d);
     }
 
     cudaFree(layer_d);
