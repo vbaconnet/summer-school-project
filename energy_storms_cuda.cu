@@ -262,7 +262,7 @@ int main(int argc, char *argv[]) {
 
         // Allocate and copy onto the device
         posval_d = cudaMalloc(2 * storms[i].size * sizeof(int));
-        cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int));
+        cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int), cudaMemcpyHostToDevice);
 
         // Construct grid dimension
         int BR = (storms[i].size + TR - 1)/TR + 1;
