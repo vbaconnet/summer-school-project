@@ -260,15 +260,12 @@ int main(int argc, char *argv[]) {
     /* 4. Storms simulation */
     for( i=0; i<num_storms; i++) {
 
-        // Just setting the size of the posval array here for clarity
-        int posval_size = 2 * storm[i].size * sizeof(int);
-
         // Allocate and copy onto the device
-        posval_d = cudaMalloc(posval_size);
-        cudaMemcpy(posval_d, storm[i].posval, posval_size);
+        posval_d = cudaMalloc(2 * storms[i].size * sizeof(int));
+        cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int));
 
         // Construct grid dimension
-        int BR = (storm[i].size + TR - 1)/TR + 1;
+        int BR = (storms[i].size + TR - 1)/TR + 1;
         dim3 gridDim(BC, BR);
 
         /* 4.1. Add impacts energies to layer cells */
@@ -307,7 +304,7 @@ int main(int argc, char *argv[]) {
 
     /* 6. DEBUG: Plot the result (only for layers up to 35 points) */
     #ifdef DEBUG
-    debug_print( layer_size, layer, positions, maximum, num_storms );
+    debug_print( layer_size, layer, positions, maximum, num_stormss );
     #endif
 
     /* 7. Results output, used by the Tablon online judge software */
