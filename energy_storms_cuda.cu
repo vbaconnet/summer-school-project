@@ -307,7 +307,7 @@ int main(int argc, char *argv[]) {
 
     /* 6. DEBUG: Plot the result (only for layers up to 35 points) */
     #ifdef DEBUG
-    debug_print( layer_size, layer, positions, maximum, num_stormss );
+    debug_print( layer_size, layer, positions, maximum, num_storms );
     #endif
 
     /* 7. Results output, used by the Tablon online judge software */
