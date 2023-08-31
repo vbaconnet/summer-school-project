@@ -204,6 +204,8 @@ Storm read_storm_file( char *fname ) {
  */
 int main(int argc, char *argv[]) {
 
+    int i,k;
+
     /* 1.1. Read arguments */
     if (argc<3) {
         fprintf(stderr,"Usage: %s <size> <storm_1_file> [ <storm_i_file> ] ... \n", argv[0] );
@@ -215,7 +217,7 @@ int main(int argc, char *argv[]) {
     Storm storms[ num_storms ];
 
     /* 1.2. Read storms information */
-    for( i=2; i<argc; i++ ) 
+    for(i=2; i<argc; i++ )
         storms[i-2] = read_storm_file( argv[i] );
 
     /* 1.3. Intialize maximum levels to zero */
