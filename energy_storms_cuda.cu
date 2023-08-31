@@ -75,7 +75,7 @@ typedef struct {
 __device__ float update(int cell, int part, int layer_size, int impact_pos, float energy) {
     /* 1. Compute the absolute value of the distance between the
         impact position and the k-th position of the layer */
-    int distance = impact_pos - k;
+    int distance = impact_pos - cell;
     if ( distance < 0 ) distance = - distance;
 
     /* 2. Impact cell has a distance value of 1 */
@@ -248,7 +248,7 @@ int main(int argc, char *argv[]) {
     /*                       CUDA                         */
     /******************************************************/
     /* Preliminary definitions for grid/block dimensions */
-    uint3 blockDim(TC,TR);
+    dim3 blockDim(TC,TR);
     int BC = (layer_size + TC - 1)/TC + 1;
 
     float *layer_d;
@@ -269,7 +269,7 @@ int main(int argc, char *argv[]) {
 
         // Construct grid dimension
         int BR = (storm[i].size + TR - 1)/TR + 1;
-        uint3 gridDim(BC, BR);
+        dim3 gridDim(BC, BR);
 
         /* 4.1. Add impacts energies to layer cells */
         bombardment<<<gridDim, blockDim>>>(int storm_size, int layer_size, float *layer_d, int *posval_d);
