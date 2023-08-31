@@ -269,7 +269,7 @@ int main(int argc, char *argv[]) {
         dim3 gridDim(BC, BR);
 
         /* 4.1. Add impacts energies to layer cells */
-        bombardment<<<gridDim, blockDim>>>(int storm_size, int layer_size, float *layer_d, int *posval_d);
+        bombardment<<<gridDim, blockDim>>>(storm_size, layer_size, layer_d, posval_d);
 
         /* 4.2. Energy relaxation between storms */
         /* 4.2.1. Copy values to the ancillary array */
