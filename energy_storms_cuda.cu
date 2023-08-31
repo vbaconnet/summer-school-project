@@ -255,7 +255,7 @@ int main(int argc, char *argv[]) {
     int *posval_d;
 
     cudaMalloc(&layer_d, layer_size*sizeof(float));
-    cudaMemcpy(layer_d, layer, N*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(layer_d, layer, layer_size*sizeof(float), cudaMemcpyHostToDevice);
 
     /* 4. Storms simulation */
     for( i=0; i<num_storms; i++) {
