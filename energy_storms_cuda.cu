@@ -121,7 +121,7 @@ __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int 
             for (int j=0; j < blockDim.y; j++)
                 sum += energies[cell][j];
 
-            atomicAdd(layer_d[cell], sum);
+            atomicAdd(&layer_d[cell], sum);
         }
     }
 }
