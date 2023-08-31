@@ -272,7 +272,7 @@ int main(int argc, char *argv[]) {
         /* 4.1. Add impacts energies to layer cells */
         bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
 
-        cudaMemcpy(layer, layer_d, layer_size, CudaMemcpyDeviceToHost)
+        cudaMemcpy(layer, layer_d, layer_size, cudaMemcpyDeviceToHost);
         cudaFree(posval_d);
 
         /* 4.2. Energy relaxation between storms */

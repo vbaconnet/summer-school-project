@@ -27,6 +27,8 @@ CUDACC=nvcc
 HIPCC=hipcc
 OMPFLAG= -fopenmp
 
+DEBUG = "-DDEBUG"
+
 # Flags for optimization and libs
 FLAGS=-O3
 LIBS=-lm
