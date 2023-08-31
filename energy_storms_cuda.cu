@@ -260,7 +260,7 @@ int main(int argc, char *argv[]) {
     /* 4. Storms simulation */
     for( i=0; i<num_storms; i++) {
 
-        // Allocate and copy onto the device
+        // Allocate and copy the posval array onto the device
         cudaMalloc((void **)&posval_d, 2 * storms[i].size * sizeof(int));
         cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int), cudaMemcpyHostToDevice);
 
@@ -269,7 +269,7 @@ int main(int argc, char *argv[]) {
         dim3 gridDim(BC, BR);
 
         /* 4.1. Add impacts energies to layer cells */
-        bombardment<<<gridDim, blockDim>>>(storm_size, layer_size, layer_d, posval_d);
+        bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
 
         /* 4.2. Energy relaxation between storms */
         /* 4.2.1. Copy values to the ancillary array */
@@ -293,8 +293,10 @@ int main(int argc, char *argv[]) {
         }
 
 
-        cudaFree();
+        cudaFree(posval_d);
     }
+
+    cudaFree(layer_d);
 
     /* END: Do NOT optimize/parallelize the code below this point */
 
