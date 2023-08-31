@@ -250,7 +250,7 @@ int main(int argc, char *argv[]) {
     /******************************************************/
     /* Preliminary definitions for grid/block dimensions */
     dim3 blockDim(TC,TR);
-    int BC = (layer_size + TC - 1)/TC + 1;
+    int BC = (layer_size + TC - 1)/TC;
 
     float *layer_d;
     int *posval_d;
@@ -266,7 +266,7 @@ int main(int argc, char *argv[]) {
         cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int), cudaMemcpyHostToDevice);
 
         // Construct grid dimension
-        int BR = (storms[i].size + TR - 1)/TR + 1;
+        int BR = (storms[i].size + TR - 1)/TR;
         dim3 gridDim(BC, BR);
 
         printf("Number of threads per block: %d %d\n", TC, TR);
