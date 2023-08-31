@@ -105,6 +105,9 @@ __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int 
     int cell = blockIdx.x * blockDim.x + threadIdx.x;
     int part = blockIdx.y * blockDim.y + threadIdx.y;
 
+    printf("(%d,%d) cell: %d\n", blockIdx.x, threadIdx.x, cell);
+    printf("(%d,%d) part: %d\n", blockIdx.y, threadIdx.y, part);
+
     if ( part < storm_size && cell < layer_size )
     {
         float energy = (float)posval_d[2*part + 1] * 1000;
