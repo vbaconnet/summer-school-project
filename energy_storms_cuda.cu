@@ -203,7 +203,6 @@ Storm read_storm_file( char *fname ) {
  * MAIN PROGRAM
  */
 int main(int argc, char *argv[]) {
-    int i,j,k;
 
     /* 1.1. Read arguments */
     if (argc<3) {
@@ -258,7 +257,7 @@ int main(int argc, char *argv[]) {
     cudaMemcpy(layer_d, layer, layer_size*sizeof(float), cudaMemcpyHostToDevice);
 
     /* 4. Storms simulation */
-    for( i=0; i<num_storms; i++) {
+    for(int i=0; i<num_storms; i++) {
 
         // Allocate and copy the posval array onto the device
         cudaMalloc((void **)&posval_d, 2 * storms[i].size * sizeof(int));
