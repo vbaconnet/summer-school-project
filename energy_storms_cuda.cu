@@ -254,14 +254,14 @@ int main(int argc, char *argv[]) {
     float *layer_d;
     int *posval_d;
 
-    cudaMalloc(&layer_d, layer_size*sizeof(float));
+    cudaMalloc((void **)&layer_d, layer_size*sizeof(float));
     cudaMemcpy(layer_d, layer, layer_size*sizeof(float), cudaMemcpyHostToDevice);
 
     /* 4. Storms simulation */
     for( i=0; i<num_storms; i++) {
 
         // Allocate and copy onto the device
-        posval_d = cudaMalloc(2 * storms[i].size * sizeof(int));
+        cudaMalloc((void **)&posval_d, 2 * storms[i].size * sizeof(int));
         cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int), cudaMemcpyHostToDevice);
 
         // Construct grid dimension
