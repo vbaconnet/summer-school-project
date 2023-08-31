@@ -269,6 +269,9 @@ int main(int argc, char *argv[]) {
         int BR = (storms[i].size + TR - 1)/TR + 1;
         dim3 gridDim(BC, BR);
 
+        printf("Number of threads per block: %d %d\n", TC, TR);
+        printf("Number of blocks per grid:   %d %d\n", BC, BR);
+
         /* 4.1. Add impacts energies to layer cells */
         bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
 
