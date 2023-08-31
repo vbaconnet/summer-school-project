@@ -26,6 +26,9 @@
 /* Headers for the CUDA assignment versions */
 #include<cuda.h>
 
+#define TC 32 // threads per block in x direction (columns)
+#define TR 32 // threads per block in y direction (rows)
+
 /*
  * Macros to show errors when calling a CUDA library function,
  * or after launching a kernel
@@ -66,12 +69,41 @@ typedef struct {
     int *posval; // Positions and values
 } Storm;
 
+/* Perform the first stage of a storm wave. The logic here is to give 1 thread for each particle/cell
+ * in a 2D way. Each thread will store the energy/position of the particle and apply it to its cell.
+ * */
+__global__ void bombardment(int storm_size, int layer_size, float *layer_d, int *posval_d) {
+    int cell = blockIdx.x * blockDim.x + threadIdx.x;
+    int part = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if ( part < storm_size && cell < layer_size )
+    {
+        float energy = (float)posval_d[2*part + 1] * 1000;
+        int impact_pos = posval_d[2*part];
+
+        // Collect the energy from each particle on each cell
+        __shared__ energies[TC][TR];
+        energies[threadIdx.x][threadIdx.y] = update(cell, part, layer_size, impact_pos, energy);
+
+        // Do the reduction to sum up the energy of all particles on a given cell
+        if (threadIdx.y == 0) {
+            float sum = 0.0f;
+
+            for (int j=0; j < blockDim.y; j++)
+                sum += energies[cell][j];
+
+            atomicAdd(layer_d[cell], sum);
+        }
+    }
+}
+
 /* THIS FUNCTION CAN BE MODIFIED */
 /* Function to update a single position of the layer */
-void update( float *layer, int layer_size, int k, int pos, float energy ) {
+/* This function returns 0 if the energy is lower than the threshold */
+__device__ float update(int cell, int part, int layer_size, int impact_pos, float energy) {
     /* 1. Compute the absolute value of the distance between the
         impact position and the k-th position of the layer */
-    int distance = pos - k;
+    int distance = impact_pos - k;
     if ( distance < 0 ) distance = - distance;
 
     /* 2. Impact cell has a distance value of 1 */
@@ -85,9 +117,13 @@ void update( float *layer, int layer_size, int k, int pos, float energy ) {
     /* 4. Compute attenuated energy */
     float energy_k = energy / layer_size / atenuacion;
 
-    /* 5. Do not add if its absolute value is lower than the threshold */
-    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size )
-        layer[k] = layer[k] + energy_k;
+    /* 5. If lower than the threshold do not take the energy into account (equivalent to
+     * doing the layer[k] += 0 in the serial code) */
+    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size ) {
+        return energy_k;
+    } else {
+        return 0.0f;
+    }
 }
 
 
@@ -207,24 +243,36 @@ int main(int argc, char *argv[]) {
     }
     for( k=0; k<layer_size; k++ ) layer[k] = 0.0f;
     for( k=0; k<layer_size; k++ ) layer_copy[k] = 0.0f;
-    
+
+    /******************************************************/
+    /*                       CUDA                         */
+    /******************************************************/
+    /* Preliminary definitions for grid/block dimensions */
+    uint3 blockDim(TC,TR);
+    int BC = (layer_size + TC - 1)/TC + 1;
+
+    float *layer_d;
+    int *posval_d;
+
+    cudaMalloc(&layer_d, layer_size*sizeof(float));
+    cudaMemcpy(layer_d, layer, N*sizeof(float), cudaMemcpyHostToDevice);
+
     /* 4. Storms simulation */
     for( i=0; i<num_storms; i++) {
 
-        /* 4.1. Add impacts energies to layer cells */
-        /* For each particle */
-        for( j=0; j<storms[i].size; j++ ) {
-            /* Get impact energy (expressed in thousandths) */
-            float energy = (float)storms[i].posval[j*2+1] * 1000;
-            /* Get impact position */
-            int position = storms[i].posval[j*2];
+        // Just setting the size of the posval array here for clarity
+        int posval_size = 2 * storm[i].size * sizeof(int);
 
-            /* For each cell in the layer */
-            for( k=0; k<layer_size; k++ ) {
-                /* Update the energy value for the cell */
-                update( layer, layer_size, k, position, energy );
-            }
-        }
+        // Allocate and copy onto the device
+        posval_d = cudaMalloc(posval_size);
+        cudaMemcpy(posval_d, storm[i].posval, posval_size);
+
+        // Construct grid dimension
+        int BR = (storm[i].size + TR - 1)/TR + 1;
+        uint3 gridDim(BC, BR);
+
+        /* 4.1. Add impacts energies to layer cells */
+        bombardment<<<gridDim, blockDim>>>(int storm_size, int layer_size, float *layer_d, int *posval_d);
 
         /* 4.2. Energy relaxation between storms */
         /* 4.2.1. Copy values to the ancillary array */
@@ -246,6 +294,9 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+
+
+        cudaFree();
     }
 
     /* END: Do NOT optimize/parallelize the code below this point */
