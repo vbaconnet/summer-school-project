@@ -105,17 +105,17 @@ __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int 
     int cell = blockIdx.x * blockDim.x + threadIdx.x;
     int part = blockIdx.y * blockDim.y + threadIdx.y;
 
-    printf("(%d,%d) cell: %d\n", blockIdx.x, threadIdx.x, cell);
-    printf("(%d,%d) part: %d\n", blockIdx.y, threadIdx.y, part);
+    // Collect the energy from each particle on each cell
+    __shared__ float energies[TC][TR];
+    energies[threadIdx.x][threadIdx.y] = 0.0f; 
 
     if ( part < storm_size && cell < layer_size )
     {
         float energy = (float)posval_d[2*part + 1] * 1000;
         int impact_pos = posval_d[2*part];
 
-        // Collect the energy from each particle on each cell
-        __shared__ float energies[TC][TR];
         energies[threadIdx.x][threadIdx.y] = update(cell, part, layer_size, impact_pos, energy);
+        __syncthreads();
 
         // Do the reduction to sum up the energy of all particles on a given cell
         if (threadIdx.y == 0) {
@@ -128,7 +128,6 @@ __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int 
         }
     }
 }
-
 
 /* ANCILLARY FUNCTIONS: These are not called from the code section which is measured, leave untouched */
 /* DEBUG function: Prints the layer status */
@@ -260,7 +259,6 @@ int main(int argc, char *argv[]) {
 
     cudaMalloc((void **)&layer_d, layer_size*sizeof(float));
     cudaMemcpy(layer_d, layer, layer_size*sizeof(float), cudaMemcpyHostToDevice);
-
     printf("Layer size: %d\n", layer_size);
 
     /* 4. Storms simulation */
@@ -280,10 +278,6 @@ int main(int argc, char *argv[]) {
 
         /* 4.1. Add impacts energies to layer cells */
         bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
-
-#ifdef DEBUG
-        debug_print( layer_size, layer, positions, maximum, num_storms );
-#endif
 
         cudaMemcpy(layer, layer_d, layer_size, cudaMemcpyDeviceToHost);
         cudaFree(posval_d);
