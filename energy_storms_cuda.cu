@@ -28,6 +28,7 @@
 
 #define TC 32 // threads per block in x direction (columns)
 #define TR 32 // threads per block in y direction (rows)
+#define RAD 1 // radius for ghost cells
 
 /*
  * Macros to show errors when calling a CUDA library function,
@@ -127,6 +128,30 @@ __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int 
             atomicAdd(&layer_d[cell], sum);
         }
     }
+}
+
+__global__ void relaxation(int storm_size, int layer_size, float *layer_d) {
+
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i < layer_size) {
+    
+    __shared__ float layer_copy[TC + 2*RAD];
+    int s_idx = threadIdx.x + RAD;
+
+    // Regular cells
+    layer_copy[s_idx] = layer_d[i];
+    
+    //Halo cells
+    if (threadIdx.x < RAD) {
+      layer_copy[s_idx - RAD] = layer_d[i - RAD];
+      layer_copy[s_idx + blockDim.x] = layer_d[i + blockDim.x];
+    }
+
+    __syncthreads();
+
+    layer_d[i] = (layer_copy[i-1] + layer_copy[i] + layer_copy[i+1])/3;
+  }
 }
 
 /* ANCILLARY FUNCTIONS: These are not called from the code section which is measured, leave untouched */
@@ -251,7 +276,7 @@ int main(int argc, char *argv[]) {
     /*                       CUDA                         */
     /******************************************************/
     /* Preliminary definitions for grid/block dimensions */
-    dim3 blockDim(TC,TR);
+    dim3 blockDim_b(TC,TR);
     int BC = (layer_size + TC - 1)/TC;
 
     float *layer_d;
@@ -270,27 +295,24 @@ int main(int argc, char *argv[]) {
 
         // Construct grid dimension
         int BR = (storms[i].size + TR - 1)/TR;
-        dim3 gridDim(BC, BR);
+        dim3 gridDim_b(BC, BR);
 
         printf("Storm size: %d\n", storms[i].size);
         printf("Number of threads per block: %d %d\n", TC, TR);
         printf("Number of blocks per grid:   %d %d\n", BC, BR);
 
         /* 4.1. Add impacts energies to layer cells */
-        bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
+        bombardment<<<gridDim_b, blockDim_b>>>(storms[i].size, layer_size, layer_d, posval_d);
+        cudaFree(posval_d);
+        
+        // Readjust the # of blocks and threads
+        dim3 gridDim_r(BC, 1);
+        dim3 blockDim_r(TC, 1);   
+ 
+        /* 4.2 */
+        relaxation<<<gridDim_r, blockDim_r>>>(storms[i].size, layer_size, layer_d);
 
         cudaMemcpy(layer, layer_d, layer_size, cudaMemcpyDeviceToHost);
-        cudaFree(posval_d);
-
-        /* 4.2. Energy relaxation between storms */
-        /* 4.2.1. Copy values to the ancillary array */
-        for( k=0; k<layer_size; k++ )
-            layer_copy[k] = layer[k];
-
-        /* 4.2.2. Update layer using the ancillary values.
-                  Skip updating the first and last positions */
-        for( k=1; k<layer_size-1; k++ )
-            layer[k] = ( layer_copy[k-1] + layer_copy[k] + layer_copy[k+1] ) / 3;
 
         /* 4.3. Locate the maximum value in the layer, and its position */
         for( k=1; k<layer_size-1; k++ ) {
