@@ -50,7 +50,8 @@ typedef struct {
 
 /* THIS FUNCTION CAN BE MODIFIED */
 /* Function to update a single position of the layer */
-void update( float *layer, int layer_size, int k, int pos, float energy ) {
+void update( float *layer, int layer_size, int k, int pos, float energy, int rank, int size ) {
+    
     /* 1. Compute the absolute value of the distance between the
         impact position and the k-th position of the layer */
     int distance = pos - k;
@@ -66,10 +67,13 @@ void update( float *layer, int layer_size, int k, int pos, float energy ) {
 
     /* 4. Compute attenuated energy */
     float energy_k = energy / layer_size / atenuacion;
-
-    /* 5. Do not add if its absolute value is lower than the threshold */
-    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size )
-        layer[k] = layer[k] + energy_k;
+    
+    /* 5. Each process checks if it should update the layer at position k */
+    if (energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size) {
+        if (rank == k % size) {
+            layer[k] = layer[k] + energy_k;
+        }
+    }
 }
 
 
@@ -195,8 +199,9 @@ int main(int argc, char *argv[]) {
     for( k=0; k<layer_size; k++ ) layer[k] = 0.0f;
     for( k=0; k<layer_size; k++ ) layer_copy[k] = 0.0f;
     
-    /* 4. Storms simulation */
-    for( i=0; i<num_storms; i++) {
+    /* 4. Storms simulation     for (i=0; i < num_storms; i++)  */
+    /* Parallelize the storm simulation loop */
+    for (i = rank; i < num_storms; i += size) {
 
         /* 4.1. Add impacts energies to layer cells */
         /* For each particle */
@@ -209,10 +214,13 @@ int main(int argc, char *argv[]) {
             /* For each cell in the layer */
             for( k=0; k<layer_size; k++ ) {
                 /* Update the energy value for the cell */
-                update( layer, layer_size, k, position, energy );
+                update( layer, layer_size, k, position, energy, rank, size );
             }
         }
 
+        /* Synchronize after the storm simulation */
+        MPI_Barrier(MPI_COMM_WORLD);
+        
         /* 4.2. Energy relaxation between storms */
         /* 4.2.1. Copy values to the ancillary array */
         for( k=0; k<layer_size; k++ ) 
@@ -234,7 +242,14 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+    
+    /* Synchronize after the storm simulation */
+    MPI_Barrier(MPI_COMM_WORLD);
 
+    /* Gather results to the root process */
+    MPI_Gather(&maximum[rank], 1, MPI_FLOAT, maximum, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
+    MPI_Gather(&positions[rank], 1, MPI_INT, positions, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    
     /* END: Do NOT optimize/parallelize the code below this point */
 
     /* 5. End time measurement */
@@ -265,6 +280,7 @@ int main(int argc, char *argv[]) {
         free( storms[i].posval );
 
     /* 9. Program ended successfully */
+    MPI_Finalize();
     return 0;
 }
 
