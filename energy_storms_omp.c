@@ -66,12 +66,19 @@ void update( float *layer, int layer_size, int k, int pos, float energy ) {
 
     /* 4. Compute attenuated energy */
     float energy_k = energy / layer_size / atenuacion;
-
+    
+    // Use OpenMP to parallelize the loop
+    #pragma omp parallel for
+    for (int i = 0; i < layer_size; ++i) {
+    
     /* 5. Do not add if its absolute value is lower than the threshold */
-    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size )
-        layer[k] = layer[k] + energy_k;
+    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size ) {
+    // Using atomic operation to update the layer array safely
+    #pragma omp atomic
+        layer[i] += energy_k;
+        }
+    }
 }
-
 
 /* ANCILLARY FUNCTIONS: These are not called from the code section which is measured, leave untouched */
 /* DEBUG function: Prints the layer status */
@@ -188,9 +195,11 @@ int main(int argc, char *argv[]) {
     for( k=0; k<layer_size; k++ ) layer[k] = 0.0f;
     for( k=0; k<layer_size; k++ ) layer_copy[k] = 0.0f;
     
+   
     /* 4. Storms simulation */
-    for( i=0; i<num_storms; i++) {
-
+    #pragma omp parallel for private(j, k)
+    for (i = 0; i < num_storms; i++) {
+        
         /* 4.1. Add impacts energies to layer cells */
         /* For each particle */
         for( j=0; j<storms[i].size; j++ ) {
@@ -208,18 +217,22 @@ int main(int argc, char *argv[]) {
 
         /* 4.2. Energy relaxation between storms */
         /* 4.2.1. Copy values to the ancillary array */
+        #pragma omp parallel for
         for( k=0; k<layer_size; k++ ) 
             layer_copy[k] = layer[k];
 
         /* 4.2.2. Update layer using the ancillary values.
                   Skip updating the first and last positions */
+         #pragma omp parallel for
         for( k=1; k<layer_size-1; k++ )
             layer[k] = ( layer_copy[k-1] + layer_copy[k] + layer_copy[k+1] ) / 3;
 
         /* 4.3. Locate the maximum value in the layer, and its position */
+         #pragma omp parallel for
         for( k=1; k<layer_size-1; k++ ) {
             /* Check it only if it is a local maximum */
             if ( layer[k] > layer[k-1] && layer[k] > layer[k+1] ) {
+               #pragma omp critical
                 if ( layer[k] > maximum[i] ) {
                     maximum[i] = layer[k];
                     positions[i] = k;
