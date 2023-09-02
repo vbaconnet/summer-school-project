@@ -27,7 +27,6 @@
 #include<cuda.h>
 
 #define TC 256 // threads per block in x direction (columns)
-#define TR 32 // threads per block in y direction (rows)
 #define RAD 1 // radius for ghost cells
 
 /*
@@ -103,21 +102,21 @@ __device__ float update(int cell, int layer_size, int impact_pos, float energy) 
  * in a 2D way. Each thread will store the energy/position of the particle and apply it to its cell.
  * */
 __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int *posval_d) {
-    int cell = blockIdx.x * blockDim.x + threadIdx.x;
+  int cell = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if ( cell < layer_size ) {
-  
-      float energy;
-      int impact_pos;
+  if ( cell < layer_size ) {
 
-      for (int j=0; j<storm_size; j++) {
-      
-        energy = (float)posval_d[2*j + 1] * 1000;
-        impact_pos = posval_d[2*j];
-        layer_d[cell] += update(cell, layer_size, impact_pos, energy);       
-      
-      }
+    float energy;
+    int impact_pos;
+
+    for (int j=0; j < storm_size; j++) {
+
+      energy = ((float)posval_d[2*j + 1]) * 1000.0f;
+      impact_pos = posval_d[2*j];
+      layer_d[cell] += update(cell, layer_size, impact_pos, energy);
+
     }
+  }
 }
 
 __global__ void relaxation(int layer_size, float *layer_d) {
@@ -125,13 +124,13 @@ __global__ void relaxation(int layer_size, float *layer_d) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (i < layer_size) {
-    
+
     __shared__ float layer_copy[TC + 2*RAD];
     int s_idx = threadIdx.x + RAD;
 
     // Regular cells
     layer_copy[s_idx] = layer_d[i];
-    
+
     //Halo cells
     if (threadIdx.x < RAD) {
       layer_copy[s_idx - RAD] = layer_d[i - RAD];
@@ -254,24 +253,23 @@ int main(int argc, char *argv[]) {
 
     /* 3. Allocate memory for the layer and initialize to zero */
     float *layer = (float *)malloc( sizeof(float) * layer_size );
-    float *layer_copy = (float *)malloc( sizeof(float) * layer_size );
-    if ( layer == NULL || layer_copy == NULL ) {
+    if ( layer == NULL) {
         fprintf(stderr,"Error: Allocating the layer memory\n");
         exit( EXIT_FAILURE );
     }
     for( k=0; k<layer_size; k++ ) layer[k] = 0.0f;
-    for( k=0; k<layer_size; k++ ) layer_copy[k] = 0.0f;
 
     /******************************************************/
     /*                       CUDA                         */
     /******************************************************/
     /* Preliminary definitions for grid/block dimensions */
-    dim3 blockDim(TC, 1);
-    int BC = (layer_size + TC - 1)/TC;
-    dim3 gridDim(BC, 1);
+    dim3 blockDim(TC);
+    dim3 gridDim(ceil(((float)layer_size) / ((float)blockDim.x)));
+    //int BC = (layer_size + TC - 1)/TC;
+    //dim3 gridDim(BC, 1);
     
-    float *layer_d = 0;
-    int *posval_d = 0;
+    float *layer_d;
+    int *posval_d;
 
     // Allocate and copy the cells
     cudaMalloc((void **)&layer_d, layer_size*sizeof(float));
@@ -281,37 +279,38 @@ int main(int argc, char *argv[]) {
     /* 4. Storms simulation */
     for(int i=0; i<num_storms; i++) {
 
-        // Allocate and copy the posval array onto the device
-        cudaMalloc((void **)&posval_d        , 2 * storms[i].size * sizeof(int));
-        cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int), cudaMemcpyHostToDevice);
+      // Construct grid dimension
+      //int BR = (storms[i].size + TR - 1)/TR;
 
-        // Construct grid dimension
-        //int BR = (storms[i].size + TR - 1)/TR;
+      // Allocate and copy the posval array onto the device
+      cudaMalloc((void **)&posval_d        , 2 * storms[i].size * sizeof(int));
+      cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int), cudaMemcpyHostToDevice);
 
-        printf("Storm size: %d\n", storms[i].size);
-        printf("Number of threads per block: %d %d\n", TC, 1);
-        printf("Number of blocks per grid:   %d %d\n", BC, 1);
+      printf("Storm size: %d\n", storms[i].size);
+      printf("Number of threads per block: %d %d\n", blockDim.x, blockDim.y);
+      printf("Number of blocks per grid:   %d %d\n", gridDim.x ,  gridDim.y);
+      printf("Total number of threads:        %d\n", blockDim.x*blockDim.y*gridDim.x*gridDim.y);
 
-        /* 4.1. Add impacts energies to layer cells */
-        bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
-        cudaFree(posval_d);
-        
-        /* 4.2 */
-        //relaxation<<<gridDim, blockDim>>>(layer_size, layer_d);
+      /* 4.1. Add impacts energies to layer cells */
+      bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
 
-        cudaMemcpy(layer, layer_d, layer_size, cudaMemcpyDeviceToHost);
+      /* 4.2 */
+      relaxation<<<gridDim, blockDim>>>(layer_size, layer_d);
 
-        /* 4.3. Locate the maximum value in the layer, and its position */
-        for( k=1; k<layer_size-1; k++ ) {
+      cudaMemcpy(layer, layer_d, layer_size * sizeof(float), cudaMemcpyDeviceToHost);
+
+      /* 4.3. Locate the maximum value in the layer, and its position */
+      for( k=1; k<layer_size-1; k++ ) {
             /* Check it only if it is a local maximum */
             if ( layer[k] > layer[k-1] && layer[k] > layer[k+1] ) {
                 if ( layer[k] > maximum[i] ) {
-                    maximum[i] = layer[k];
-                    positions[i] = k;
+                  maximum[i] = layer[k];
+                  positions[i] = k;
                 }
             }
         }
 
+      cudaFree(posval_d);
 
     }
 
@@ -320,7 +319,7 @@ int main(int argc, char *argv[]) {
     /* END: Do NOT optimize/parallelize the code below this point */
 
     /* 5. End time measurement */
-	CHECK_CUDA_CALL( cudaDeviceSynchronize() );
+	  CHECK_CUDA_CALL( cudaDeviceSynchronize() );
     ttotal = cp_Wtime() - ttotal;
 
     /* 6. DEBUG: Plot the result (only for layers up to 35 points) */
