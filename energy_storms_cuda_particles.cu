@@ -123,10 +123,12 @@ __global__ void relaxation(int layer_size, float *layer_d) {
 
   int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-  if (i < layer_size) {
+  __shared__ float layer_copy[TC + 2*RAD];
 
-    __shared__ float layer_copy[TC + 2*RAD];
-    int s_idx = threadIdx.x + RAD;
+  if (i < layer_size) { // i goes from 0 to 34
+
+    // threadIdx from 0 to 34
+    int s_idx = threadIdx.x + RAD; // from 1 to 35
 
     // Regular cells
     layer_copy[s_idx] = layer_d[i];
@@ -139,7 +141,8 @@ __global__ void relaxation(int layer_size, float *layer_d) {
 
     __syncthreads();
 
-    layer_d[i] = (layer_copy[s_idx-1] + layer_copy[s_idx] + layer_copy[s_idx+1])/3;
+    if ( i != 0 && i != layer_size - 1)
+      layer_d[i] = (layer_copy[s_idx-1] + layer_copy[s_idx] + layer_copy[s_idx+1])/3;
   }
 }
 
@@ -274,7 +277,7 @@ int main(int argc, char *argv[]) {
     // Allocate and copy the cells
     cudaMalloc((void **)&layer_d, layer_size*sizeof(float));
     cudaMemcpy(layer_d, layer, layer_size*sizeof(float), cudaMemcpyHostToDevice);
-    printf("Layer size: %d\n", layer_size);
+//    printf("Layer size: %d\n", layer_size);
 
     /* 4. Storms simulation */
     for(int i=0; i<num_storms; i++) {
@@ -286,10 +289,10 @@ int main(int argc, char *argv[]) {
       cudaMalloc((void **)&posval_d        , 2 * storms[i].size * sizeof(int));
       cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int), cudaMemcpyHostToDevice);
 
-      printf("Storm size: %d\n", storms[i].size);
-      printf("Number of threads per block: %d %d\n", blockDim.x, blockDim.y);
-      printf("Number of blocks per grid:   %d %d\n", gridDim.x ,  gridDim.y);
-      printf("Total number of threads:        %d\n", blockDim.x*blockDim.y*gridDim.x*gridDim.y);
+  //    printf("Storm size: %d\n", storms[i].size);
+  //    printf("Number of threads per block: %d %d\n", blockDim.x, blockDim.y);
+  //    printf("Number of blocks per grid:   %d %d\n", gridDim.x ,  gridDim.y);
+  //    printf("Total number of threads:        %d\n", blockDim.x*blockDim.y*gridDim.x*gridDim.y);
 
       /* 4.1. Add impacts energies to layer cells */
       bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
