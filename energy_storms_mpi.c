@@ -219,6 +219,73 @@ void find_maximum(float *maximum, int *position, float layer[], int local_layer_
     }
 }
 
+void relaxation(float layer_copy[], float layer[], int layer_size, int rank, int size) {
+
+    float onethird = 1.0/3.0; // to avoid division in the for loop
+    float to_recv[2];
+    MPI_Status status;
+
+    /* First, proceed with the relaxation everywhere */
+    for (int i=1; i<layer_size; i++) {
+        layer[i] = (layer_copy[i-1] + layer_copy[i] + layer_copy[i+1]) * onethird;
+    }
+
+    /* Next, take care of the edges
+     * Any rank i has to send its leftmost cell to rank - 1 and rightmost cell to rank + 1, and
+     * has to recv from rank - 1 to take care of layer[0] and rank + 1 to take care of layer[layer_size-1]
+     * rank 0 only sends 1 and receives 1
+     * rank (size-1) only sends 1 and receives 1*/
+
+    /* FIRST SEND/RECV: leftmost points */
+    // Even ranks, send first, then receive
+    if (rank % 2 == 0) {
+
+        if (rank != 0) {
+            MPI_Send(&layer_copy[0], 1, MPI_FLOAT, rank - 1, 1000 + size + rank, MPI_COMM_WORLD);
+        }
+
+        if (rank != size - 1) {
+            MPI_Recv(&to_recv[1], 1, MPI_FLOAT, rank + 1, 1000 + size + (rank + 1), MPI_COMM_WORLD, &status);
+        }
+
+    } else {
+
+        if (rank != size - 1) {
+            MPI_Recv(&to_recv[1], 1, MPI_FLOAT, rank + 1, 1000 + size + (rank + 1), MPI_COMM_WORLD, &status);
+        }
+
+        if (rank != 0) {
+            MPI_Send(&layer_copy[0], 1, MPI_FLOAT, rank - 1, 1000 + size + rank, MPI_COMM_WORLD);
+        }
+    }
+
+    /* SECOND SEND/RECV: rightmost point */
+    // Even ranks, send first, then receive
+    if (rank % 2 == 0) {
+
+        if (rank != size - 1) {
+            MPI_Send(&layer_copy[layer_size - 1], 1, MPI_FLOAT, rank + 1, 2000 + size + rank, MPI_COMM_WORLD);
+        }
+
+        if (rank != 0) {
+            MPI_Recv(&to_recv[0], 1, MPI_FLOAT, rank - 1, 2000 + size + (rank - 1), MPI_COMM_WORLD, &status);
+        }
+
+    } else {
+
+        if (rank != 0) {
+            MPI_Recv(&to_recv[0], 1, MPI_FLOAT, rank - 1, 2000 + size + (rank - 1), MPI_COMM_WORLD, &status);
+        }
+
+        if (rank != size - 1) {
+            MPI_Send(&layer_copy[layer_size - 1], 1, MPI_FLOAT, rank + 1, 2000 + size + rank, MPI_COMM_WORLD);
+        }
+    }
+
+    /* Apply averaging if not on the edge ranks */
+    if (rank != 0) layer[0] = (layer_copy[1] + layer_copy[0] + to_recv[0]) * onethird;
+    if (rank != size - 1) layer[layer_size - 1] = (layer_copy[layer_size - 2] + layer_copy[layer_size - 1] + to_recv[1]) * onethird;
+}
 
 /*
  * MAIN PROGRAM
@@ -252,11 +319,8 @@ int main(int argc, char *argv[]) {
     // Subdivide the domain for each rank
     local_layer_size = redistribute_layer_size(rank, size, layer_size, local_sizes);
 
-    printf("1. Rank %d has size %d (%d)\n", rank, local_layer_size, local_sizes[rank]);
-
     /* 1.2. Read storms information */
     if (rank == 0) {
-        printf("2. Rank %d is reading storm file (%d/%d)\n", rank, rank+1, size);
         for( i=2; i<argc; i++ ) storms[i-2] = read_storm_file( argv[i] );
     }
 
@@ -266,10 +330,6 @@ int main(int argc, char *argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
         MPI_Bcast(storms[i].posval, 2*storms[i].size, MPI_INTEGER, 0, MPI_COMM_WORLD);
     }
-
-    printf("33. Rank %d has posval %d %d\n", rank, storms[0].posval[0], storms[0].posval[1]);
-
-    printf("3. Rank %d has %d storms and 1st storm has %d particles\n", rank, num_storms, storms[0].size);
 
     /* 1.3. Intialize maximum levels to zero */
     float maximum[num_storms];
@@ -287,7 +347,6 @@ int main(int argc, char *argv[]) {
     } max_and_rank_IN, max_and_rank_OUT;
 
     max_and_rank_IN.rank_owner = rank;
-    printf("4. Rank %d initialized max_and_rank_IN rank owner to %d\n", rank,  max_and_rank_IN.rank_owner );
 
     /* 2. Begin time measurement */
     MPI_Barrier(MPI_COMM_WORLD);
@@ -295,8 +354,6 @@ int main(int argc, char *argv[]) {
     double ttotal = cp_Wtime();
 
     /* START: Do NOT optimize/parallelize the code of the main program above this point */
-
-    printf("5. Rank %d is allocating layers\n", rank);
 
     /* 3. Allocate memory for the layer and initialize to zero */
     float *layer = (float *)malloc( sizeof(float) * local_layer_size );
@@ -308,13 +365,9 @@ int main(int argc, char *argv[]) {
     for( k=0; k<local_layer_size; k++ ) layer[k] = 0.0f;
     for( k=0; k<local_layer_size; k++ ) layer_copy[k] = 0.0f;
 
-    printf("6. Rank %d done allocating\n", rank);
-
     /* 4. Storms simulation */
     /* Parallelize the storm simulation loop */
     for (i = 0; i < num_storms; i++) {
-
-        printf("7. Rank %d storm %d\n", rank, i+1);
 
         /* 4.1. Add impacts energies to layer cells */
         /* For each particle */
@@ -336,29 +389,22 @@ int main(int argc, char *argv[]) {
         
         /* 4.2. Energy relaxation between storms */
         /* 4.2.1. Copy values to the ancillary array */
-        /* for( k=0; k<local_layer_size; k++ ) */
-        /*     layer_copy[k] = layer[k]; */
+        for( k=0; k<local_layer_size; k++ )
+             layer_copy[k] = layer[k];
 
         /* 4.2.2. Update layer using the ancillary values.
                   Skip updating the first and last positions */
-        /* for( k=1; k<layer_size-1; k++ ) */
-        /*     layer[k] = ( layer_copy[k-1] + layer_copy[k] + layer_copy[k+1] ) / 3; */
+        relaxation(layer_copy, layer, local_layer_size, rank, size);
 
         /* 4.3. Locate the maximum value in the layer, and its position */
         find_maximum(&local_maximum, &local_position, layer, local_layer_size, rank, size);
-
-        printf("8. Rank %d has maximum %f at position %d (global %d)\n", rank, local_maximum, local_position,
-get_global_index(local_position, rank, local_sizes));
 
         max_and_rank_IN.max = local_maximum;
 
         // Reduce to find the global maximum
         // NOTE: MPI_MAXLOC will also return the rank that owns the maximum, which will allow
         // us to find the global_
-        printf("9. Rank %d launching MPI_Allreduce\n", rank);
         MPI_Allreduce(&max_and_rank_IN, &max_and_rank_OUT, 1, MPI_FLOAT_INT, MPI_MAXLOC, MPI_COMM_WORLD);
-
-        printf("10. Looks like rank %d has the maximum %f\n", max_and_rank_OUT.rank_owner, max_and_rank_OUT.max);
 
         // Let the owning processor broadcast their maximum local position to all others
         MPI_Bcast(&local_position, 1, MPI_INTEGER, max_and_rank_OUT.rank_owner, MPI_COMM_WORLD);
