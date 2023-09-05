@@ -85,8 +85,6 @@ void update( float *layer, int layer_size, int k, int pos, float energy, int ran
     distance = distance + 1;
 
     /* 3. Square root of the distance */
-    /* NOTE: Real world atenuation typically depends on the square of the distance.
-       We use here a tailored equation that affects a much wider range of cells */
     float atenuacion = sqrtf( (float)distance );
 
     /* 4. Compute attenuated energy */
@@ -97,7 +95,6 @@ void update( float *layer, int layer_size, int k, int pos, float energy, int ran
         layer[k] = layer[k] + energy_k;
     }
 }
-
 
 /* ANCILLARY FUNCTIONS: These are not called from the code section which is measured, leave untouched */
 /* DEBUG function: Prints the layer status */
@@ -315,8 +312,7 @@ int main(int argc, char *argv[]) {
 
     // Array that contains the layer size of each rank
     local_sizes = (int *)malloc(size * sizeof(int));
-    for (i = 0 ; i<size; i++) local_sizes[i] = 0;
-   
+
     // Subdivide the domain for each rank
     local_layer_size = redistribute_layer_size(rank, size, layer_size, local_sizes);
 
