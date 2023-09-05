@@ -103,8 +103,9 @@ __device__ float update(int cell, int layer_size, int impact_pos, float energy) 
  * */
 __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int *posval_d) {
   int cell = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
 
-  if ( cell < layer_size ) {
+  for ( int i = cell; i < layer_size ; i += stride) {
 
     float energy;
     int impact_pos;
@@ -113,44 +114,17 @@ __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int 
 
       energy = ((float)posval_d[2*j + 1]) * 1000.0f;
       impact_pos = posval_d[2*j];
-      layer_d[cell] += update(cell, layer_size, impact_pos, energy);
+      layer_d[i] += update(i, layer_size, impact_pos, energy);
 
     }
   }
 }
 
-/*__global__ void relaxation(int layer_size, float *layer_d) {
+__global__ void relaxation(int layer_size, float *layer_d){
+  int cell = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
 
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-  __shared__ float layer_copy[TC + 2*RAD];
-  //float layer_copy[TC + 2*RAD];
-
-  if (i < layer_size) { // i goes from 0 to 34
-
-    // threadIdx from 0 to 34
-    int s_idx = threadIdx.x + RAD; // from 1 to 35
-
-    // Regular cells
-    layer_copy[s_idx] = layer_d[i];
-
-    //Halo cells
-    if (threadIdx.x < RAD) {
-      layer_copy[s_idx - RAD] = layer_d[i - RAD];
-      layer_copy[s_idx + blockDim.x] = layer_d[i + blockDim.x];
-    }
-
-    __syncthreads();
-
-    if ( i != 0 && i != layer_size - 1)
-      layer_d[i] = (layer_copy[s_idx-1] + layer_copy[s_idx] + layer_copy[s_idx+1])/3;
-  }
-}*/
-
-__global__ void relaxation_new(int layer_size, float *layer_d){
-	for (int i = blockIdx.x * blockDim.x + threadIdx.x;
-	     i < layer_size;
-	     i += blockDim.x * gridDim.x){
+  for (int i = cell; i < layer_size; i += stride){
 	  __shared__ float layer_copy[TC + 2*RAD];
 
 	  int s_idx = threadIdx.x + RAD;
@@ -322,7 +296,7 @@ int main(int argc, char *argv[]) {
       bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
 
       /* 4.2 */
-      relaxation_new<<<gridDim, blockDim>>>(layer_size, layer_d);
+      relaxation<<<gridDim, blockDim>>>(layer_size, layer_d);
 
       cudaMemcpy(layer, layer_d, layer_size * sizeof(float), cudaMemcpyDeviceToHost);
 
