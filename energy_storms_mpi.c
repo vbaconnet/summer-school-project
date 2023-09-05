@@ -303,9 +303,6 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    local_sizes = (int *)malloc(size * sizeof(int)); // will contain the sizes of all ranks
-    for (i = 0 ; i<size; i++) local_sizes[i] = 0;
-
     /* 1.1. Read arguments */
     if (argc<3) {
         fprintf(stderr,"Usage: %s <size> <storm_1_file> [ <storm_i_file> ] ... \n", argv[0] );
@@ -316,6 +313,10 @@ int main(int argc, char *argv[]) {
     int num_storms = argc-2;
     Storm storms[ num_storms ];
 
+    // Array that contains the layer size of each rank
+    local_sizes = (int *)malloc(size * sizeof(int));
+    for (i = 0 ; i<size; i++) local_sizes[i] = 0;
+   
     // Subdivide the domain for each rank
     local_layer_size = redistribute_layer_size(rank, size, layer_size, local_sizes);
 
