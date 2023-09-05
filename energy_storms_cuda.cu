@@ -26,7 +26,7 @@
 /* Headers for the CUDA assignment versions */
 #include<cuda.h>
 
-#define TC 256 // threads per block in x direction (columns)
+#define TC 1024 // threads per block in x direction (columns)
 #define RAD 1 // radius for ghost cells
 
 /*
@@ -101,6 +101,9 @@ __device__ float update(int cell, int layer_size, int impact_pos, float energy) 
 /* Perform the first stage of a storm wave. Each cell is going through all the particles*/
 __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int *posval_d) {
   int cell = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockIdx.x * blockDim.x;
+
+  for (int i=cell; i<layer_size; i += stride) {
 
   if ( cell < layer_size ) {
 
@@ -115,33 +118,38 @@ __global__ void bombardment(int storm_size, int layer_size, float *layer_d, int 
 
     }
   }
+  }
+
 }
 
 /* Performs the relaxation step on the GPU */
 __global__ void relaxation(int layer_size, float *layer_d) {
 
   int i = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockIdx.x * blockDim.x;
 
-  __shared__ float layer_copy[TC + 2*RAD];
+  for (int ii = i; i < layer_size; i += stride) {
+      __shared__ float layer_copy[TC + 2*RAD];
 
-  if (i < layer_size) { // i goes from 0 to 34
+      if (i < layer_size) { // i goes from 0 to 34
 
-    // threadIdx from 0 to 34
-    int s_idx = threadIdx.x + RAD; // from 1 to 35
+          // threadIdx from 0 to 34
+          int s_idx = threadIdx.x + RAD; // from 1 to 35
 
-    // Regular cells
-    layer_copy[s_idx] = layer_d[i];
+          // Regular cells
+          layer_copy[s_idx] = layer_d[i];
 
-    //Halo cells
-    if (threadIdx.x < RAD) {
-      layer_copy[s_idx - RAD] = layer_d[i - RAD];
-      layer_copy[s_idx + blockDim.x] = layer_d[i + blockDim.x];
-    }
+          //Halo cells
+          if (threadIdx.x < RAD) {
+              layer_copy[s_idx - RAD] = layer_d[i - RAD];
+              layer_copy[s_idx + blockDim.x] = layer_d[i + blockDim.x];
+          }
 
-    __syncthreads();
+          __syncthreads();
 
-    if ( i != 0 && i != layer_size - 1)
-      layer_d[i] = (layer_copy[s_idx-1] + layer_copy[s_idx] + layer_copy[s_idx+1])/3;
+          if ( i != 0 && i != layer_size - 1)
+              layer_d[i] = (layer_copy[s_idx-1] + layer_copy[s_idx] + layer_copy[s_idx+1])/3;
+      }
   }
 }
 
@@ -266,7 +274,7 @@ int main(int argc, char *argv[]) {
     /******************************************************/
     /* Preliminary definitions for grid/block dimensions */
     dim3 blockDim(TC);
-    dim3 gridDim(ceil(((float)layer_size) / ((float)blockDim.x)));
+    dim3 gridDim((layer_size + blockDim.x - 1)/blockDim.x);
 
     float *layer_d;
     int *posval_d;
