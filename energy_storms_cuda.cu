@@ -265,32 +265,21 @@ int main(int argc, char *argv[]) {
     /******************************************************/
     /* Preliminary definitions for grid/block dimensions */
     dim3 blockDim(TC);
-    dim3 gridDim(ceil(((float)layer_size) / ((float)blockDim.x)));
-    //int BC = (layer_size + TC - 1)/TC;
-    //dim3 gridDim(BC, 1);
-    
+    dim3 gridDim((layer_size + blockDim.x - 1)/blockDim.x);
+     
     float *layer_d;
     int *posval_d;
 
     // Allocate and copy the cells
     cudaMalloc((void **)&layer_d, layer_size*sizeof(float));
     cudaMemcpy(layer_d, layer, layer_size*sizeof(float), cudaMemcpyHostToDevice);
-//    printf("Layer size: %d\n", layer_size);
 
     /* 4. Storms simulation */
     for(int i=0; i<num_storms; i++) {
 
-      // Construct grid dimension
-      //int BR = (storms[i].size + TR - 1)/TR;
-
       // Allocate and copy the posval array onto the device
       cudaMalloc((void **)&posval_d        , 2 * storms[i].size * sizeof(int));
       cudaMemcpy(posval_d, storms[i].posval, 2 * storms[i].size * sizeof(int), cudaMemcpyHostToDevice);
-
-  //    printf("Storm size: %d\n", storms[i].size);
-  //    printf("Number of threads per block: %d %d\n", blockDim.x, blockDim.y);
-  //    printf("Number of blocks per grid:   %d %d\n", gridDim.x ,  gridDim.y);
-  //    printf("Total number of threads:        %d\n", blockDim.x*blockDim.y*gridDim.x*gridDim.y);
 
       /* 4.1. Add impacts energies to layer cells */
       bombardment<<<gridDim, blockDim>>>(storms[i].size, layer_size, layer_d, posval_d);
@@ -298,6 +287,7 @@ int main(int argc, char *argv[]) {
       /* 4.2 */
       relaxation<<<gridDim, blockDim>>>(layer_size, layer_d);
 
+      // Send data back to the host for maximum computation
       cudaMemcpy(layer, layer_d, layer_size * sizeof(float), cudaMemcpyDeviceToHost);
 
       /* 4.3. Locate the maximum value in the layer, and its position */
