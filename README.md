@@ -1,4 +1,15 @@
-### There are branches for each parallel programming model (MPI, CUDA/HIP, OpenMP)
+# Compiling the code
+
+We are using the following compilers:
+- `cc` for the serial code
+- `mpicc` for the MPI code
+- `nvcc` for the CUDA code
+
+```bash
+$ make all
+```
+
+# Description
 
 Comment for PDC Summer School - Check out the Project_PDC_Summer_School.pdf where more detailed instruction for the final project is located
 
