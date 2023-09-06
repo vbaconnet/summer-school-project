@@ -22,9 +22,8 @@
 #CC=gcc
 #Correct CC and MPICC for Dardel
 CC=cc
-MPICC=cc
+MPICC=mpicc
 CUDACC=nvcc
-HIPCC=hipcc
 OMPFLAG= -fopenmp
 
 # Flags for optimization and libs
@@ -33,7 +32,7 @@ LIBS=-lm
 
 # Targets to build
 # change energy_storms_cuda to energy_storms_hip in order to build for hip instead
-OBJS=energy_storms_seq energy_storms_omp energy_storms_mpi energy_storms_hip
+OBJS=energy_storms_seq energy_storms_omp energy_storms_mpi energy_storms_cuda
 
 # Rules. By default show help
 help:
@@ -66,9 +65,6 @@ energy_storms_mpi: energy_storms_mpi.c
 
 energy_storms_cuda: energy_storms_cuda.cu
 	$(CUDACC) $(DEBUG) $(FLAGS) $< $(LIBS) -o $@
-
-energy_storms_hip: energy_storms_hip.hip
-	$(HIPCC) $(DEBUG) $(FLAGS) $< $(LIBS) -o $@
 
 # Remove the target files
 clean:
