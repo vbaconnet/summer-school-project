@@ -24,7 +24,7 @@
 /* Headers for the OpenMP assignment versions */
 #include<omp.h>
 
-/* Use fopen function in local tests. The Tablon online judge software 
+/* Use fopen function in local tests. The Tablon online judge software
    substitutes it by a different function to run in its sandbox */
 #ifdef CP_TABLON
 #include "cputilstablon.h"
@@ -66,18 +66,10 @@ void update( float *layer, int layer_size, int k, int pos, float energy ) {
 
     /* 4. Compute attenuated energy */
     float energy_k = energy / layer_size / atenuacion;
-    
-    // Use OpenMP to parallelize the loop
-    #pragma omp parallel for
-    for (int i = 0; i < layer_size; ++i) {
-    
+
     /* 5. Do not add if its absolute value is lower than the threshold */
-    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size ) {
-    // Using atomic operation to update the layer array safely
-    #pragma omp atomic
-        layer[i] += energy_k;
-        }
-    }
+    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size )
+        layer[k] = layer[k] +  energy_k;
 }
 
 /* ANCILLARY FUNCTIONS: These are not called from the code section which is measured, leave untouched */
@@ -91,7 +83,7 @@ void debug_print(int layer_size, float *layer, int *positions, float *maximum, i
             /* Print the energy value of the current cell */
             printf("%10.4f |", layer[k] );
 
-            /* Compute the number of characters. 
+            /* Compute the number of characters.
                This number is normalized, the maximum level is depicted with 60 characters */
             int ticks = (int)( 60 * layer[k] / maximum[num_storms-1] );
 
@@ -105,7 +97,7 @@ void debug_print(int layer_size, float *layer, int *positions, float *maximum, i
                 printf("o");
 
             /* If the cell is the maximum of any storm, print the storm mark */
-            for (i=0; i<num_storms; i++) 
+            for (i=0; i<num_storms; i++)
                 if ( positions[i] == k ) printf(" M%d", i );
 
             /* Line feed */
@@ -124,7 +116,7 @@ Storm read_storm_file( char *fname ) {
         exit( EXIT_FAILURE );
     }
 
-    Storm storm;    
+    Storm storm;
     int ok = fscanf(fstorm, "%d", &(storm.size) );
     if ( ok != 1 ) {
         fprintf(stderr,"Error: Reading size of storm file %s\n", fname );
@@ -136,10 +128,10 @@ Storm read_storm_file( char *fname ) {
         fprintf(stderr,"Error: Allocating memory for storm file %s, with size %d\n", fname, storm.size );
         exit( EXIT_FAILURE );
     }
-    
+
     int elem;
     for ( elem=0; elem<storm.size; elem++ ) {
-        ok = fscanf(fstorm, "%d %d\n", 
+        ok = fscanf(fstorm, "%d %d\n",
                     &(storm.posval[elem*2]),
                     &(storm.posval[elem*2+1]) );
         if ( ok != 2 ) {
@@ -169,7 +161,7 @@ int main(int argc, char *argv[]) {
     Storm storms[ num_storms ];
 
     /* 1.2. Read storms information */
-    for( i=2; i<argc; i++ ) 
+    for( i=2; i<argc; i++ )
         storms[i-2] = read_storm_file( argv[i] );
 
     /* 1.3. Intialize maximum levels to zero */
@@ -194,14 +186,15 @@ int main(int argc, char *argv[]) {
     }
     for( k=0; k<layer_size; k++ ) layer[k] = 0.0f;
     for( k=0; k<layer_size; k++ ) layer_copy[k] = 0.0f;
-    
-   
+
+
     /* 4. Storms simulation */
-    #pragma omp parallel for private(j, k)
+
     for (i = 0; i < num_storms; i++) {
-        
+
         /* 4.1. Add impacts energies to layer cells */
         /* For each particle */
+
         for( j=0; j<storms[i].size; j++ ) {
             /* Get impact energy (expressed in thousandths) */
             float energy = (float)storms[i].posval[j*2+1] * 1000;
@@ -209,6 +202,7 @@ int main(int argc, char *argv[]) {
             int position = storms[i].posval[j*2];
 
             /* For each cell in the layer */
+            #pragma omp parallel for default(none) private(k) shared(layer,layer_size,position,energy)
             for( k=0; k<layer_size; k++ ) {
                 /* Update the energy value for the cell */
                 update( layer, layer_size, k, position, energy );
@@ -217,22 +211,22 @@ int main(int argc, char *argv[]) {
 
         /* 4.2. Energy relaxation between storms */
         /* 4.2.1. Copy values to the ancillary array */
-        #pragma omp parallel for
-        for( k=0; k<layer_size; k++ ) 
+        #pragma omp parallel for default(none) shared(layer_copy,layer,layer_size)
+        for( k=0; k<layer_size; k++ )
             layer_copy[k] = layer[k];
 
         /* 4.2.2. Update layer using the ancillary values.
                   Skip updating the first and last positions */
-         #pragma omp parallel for
+        #pragma omp parallel for default(none) shared(layer,layer_copy,layer_size)
         for( k=1; k<layer_size-1; k++ )
             layer[k] = ( layer_copy[k-1] + layer_copy[k] + layer_copy[k+1] ) / 3;
 
+
         /* 4.3. Locate the maximum value in the layer, and its position */
-         #pragma omp parallel for
+        #pragma omp parallel for default(none) shared(positions,i,maximum,layer,layer_size)
         for( k=1; k<layer_size-1; k++ ) {
             /* Check it only if it is a local maximum */
             if ( layer[k] > layer[k-1] && layer[k] > layer[k+1] ) {
-               #pragma omp critical
                 if ( layer[k] > maximum[i] ) {
                     maximum[i] = layer[k];
                     positions[i] = k;
@@ -261,11 +255,10 @@ int main(int argc, char *argv[]) {
         printf(" %d %f", positions[i], maximum[i] );
     printf("\n");
 
-    /* 8. Free resources */    
+    /* 8. Free resources */
     for( i=0; i<argc-2; i++ )
         free( storms[i].posval );
 
     /* 9. Program ended successfully */
     return 0;
 }
-
