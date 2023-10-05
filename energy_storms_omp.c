@@ -33,7 +33,8 @@
 #endif
 
 /* Function to get wall time */
-double cp_Wtime(){
+double cp_Wtime()
+{
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return tv.tv_sec + 1.0e-6 * tv.tv_usec;
@@ -43,14 +44,16 @@ double cp_Wtime(){
 #define THRESHOLD    0.001f
 
 /* Structure used to store data for one storm of particles */
-typedef struct {
+typedef struct
+{
     int size;    // Number of particles
     int *posval; // Positions and values
 } Storm;
 
 /* THIS FUNCTION CAN BE MODIFIED */
 /* Function to update a single position of the layer */
-void update( float *layer, int layer_size, int k, int pos, float energy ) {
+void update( float *layer, int layer_size, int k, int pos, float energy )
+{
     /* 1. Compute the absolute value of the distance between the
      impact position and the k-th position of the layer */
     int distance = pos - k;
@@ -68,21 +71,23 @@ void update( float *layer, int layer_size, int k, int pos, float energy ) {
     float energy_k = energy / layer_size / atenuacion;
     
     /* 5. Do not add if its absolute value is lower than the threshold */
-    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size ) {
-        {
-            layer[k] = layer[k] + energy_k;
-        }
+    if ( energy_k >= THRESHOLD / layer_size || energy_k <= -THRESHOLD / layer_size )
+    {
+        layer[k] = layer[k] + energy_k;
     }
 }
 
 /* ANCILLARY FUNCTIONS: These are not called from the code section which is measured, leave untouched */
 /* DEBUG function: Prints the layer status */
-void debug_print(int layer_size, float *layer, int *positions, float *maximum, int num_storms ) {
+void debug_print(int layer_size, float *layer, int *positions, float *maximum, int num_storms )
+{
     int i,k;
     /* Only print for array size up to 35 (change it for bigger sizes if needed) */
-    if ( layer_size <= 35 ) {
+    if ( layer_size <= 35 )
+    {
         /* Traverse layer */
-        for( k=0; k<layer_size; k++ ) {
+        for( k=0; k<layer_size; k++ )
+        {
             /* Print the energy value of the current cell */
             printf("%10.4f |", layer[k] );
 
@@ -112,32 +117,38 @@ void debug_print(int layer_size, float *layer, int *positions, float *maximum, i
 /*
  * Function: Read data of particle storms from a file
  */
-Storm read_storm_file( char *fname ) {
+Storm read_storm_file( char *fname )
+{
     FILE *fstorm = cp_open_file( fname );
-    if ( fstorm == NULL ) {
+    if ( fstorm == NULL )
+    {
         fprintf(stderr,"Error: Opening storm file %s\n", fname );
         exit( EXIT_FAILURE );
     }
 
     Storm storm;
     int ok = fscanf(fstorm, "%d", &(storm.size) );
-    if ( ok != 1 ) {
+    if ( ok != 1 )
+    {
         fprintf(stderr,"Error: Reading size of storm file %s\n", fname );
         exit( EXIT_FAILURE );
     }
 
     storm.posval = (int *)malloc( sizeof(int) * storm.size * 2 );
-    if ( storm.posval == NULL ) {
+    if ( storm.posval == NULL )
+    {
         fprintf(stderr,"Error: Allocating memory for storm file %s, with size %d\n", fname, storm.size );
         exit( EXIT_FAILURE );
     }
 
     int elem;
-    for ( elem=0; elem<storm.size; elem++ ) {
+    for ( elem=0; elem<storm.size; elem++ )
+    {
         ok = fscanf(fstorm, "%d %d\n",
                     &(storm.posval[elem*2]),
                     &(storm.posval[elem*2+1]) );
-        if ( ok != 2 ) {
+        if ( ok != 2 )
+        {
             fprintf(stderr,"Error: Reading element %d in storm file %s\n", elem, fname );
             exit( EXIT_FAILURE );
         }
@@ -150,12 +161,14 @@ Storm read_storm_file( char *fname ) {
 /*
  * MAIN PROGRAM
  */
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 
     int i,j,k;
 
     /* 1.1. Read arguments */
-    if (argc<3) {
+    if (argc<3)
+    {
         fprintf(stderr,"Usage: %s <size> <storm_1_file> [ <storm_i_file> ] ... \n", argv[0] );
         exit( EXIT_FAILURE );
     }
@@ -171,11 +184,17 @@ int main(int argc, char *argv[]) {
     /* 1.3. Intialize maximum levels to zero */
     float maximum[ num_storms ];
     int positions[ num_storms ];
-    for (i=0; i<num_storms; i++) {
+    for (i=0; i<num_storms; i++)
+    {
         maximum[i] = 0.0f;
         positions[i] = 0;
     }
 
+    float global_maximum;
+    int global_position;
+
+    float local_maximum;
+    int local_position;
 
     /* 2. Begin time measurement */
     double ttotal = cp_Wtime();
@@ -185,37 +204,42 @@ int main(int argc, char *argv[]) {
     /* 3. Allocate memory for the layer and initialize to zero */
     float *layer = (float *)malloc( sizeof(float) * layer_size );
     float *layer_copy = (float *)malloc( sizeof(float) * layer_size );
-    if ( layer == NULL || layer_copy == NULL ) {
+    if ( layer == NULL || layer_copy == NULL )
+    {
         fprintf(stderr,"Error: Allocating the layer memory\n");
         exit( EXIT_FAILURE );
     }
 
-/* #pragma omp parallel default(none) shared(layer, layer_copy, positions, maximum, storms, num_storms, layer_size) private(k, j) */
-/*     { */
+    // Open a big parallel region for the whole storm simulation
+    #pragma omp parallel default(none) shared(layer, layer_copy, positions, \
+        maximum, storms, num_storms, layer_size, global_maximum, \
+        global_position) private(i, j, k, local_maximum, local_position)
+    {
 
-        #pragma omp parallel for
+        /* Initialization of layers in parallel */
+        #pragma omp for schedule(static)
         for( k=0; k<layer_size; k++ )
         {
             layer[k] = 0.0f;
             layer_copy[k] = 0.0f;
         }
 
-        
         /* 4. Storms simulation */
-        //#pragma omp parallel for
-        for (i = 0; i < num_storms; i++) {
-            
+        for (i = 0; i < num_storms; i++)
+        {
             /* 4.1. Add impacts energies to layer cells */
             /* For each particle */
-            for( j=0; j<storms[i].size; j++ ) {
+            for( j=0; j < storms[i].size; j++ )
+            {
                 /* Get impact energy (expressed in thousandths) */
                 float energy = (float)storms[i].posval[j*2+1] * 1000;
                 /* Get impact position */
                 int position = storms[i].posval[j*2];
                 
                 /* For each cell in the layer */
-                #pragma omp parallel for
-                for( k=0; k<layer_size; k++ ) {
+                #pragma omp for schedule(static)
+                for( k=0; k<layer_size; k++ )
+                {
                     /* Update the energy value for the cell */
                     update( layer, layer_size, k, position, energy );
                 }
@@ -223,40 +247,64 @@ int main(int argc, char *argv[]) {
             
             /* 4.2. Energy relaxation between storms */
             /* 4.2.1. Copy values to the ancillary array */
-            #pragma omp parallel for
+            #pragma omp for schedule(static)
             for( k=0; k<layer_size; k++ )
                 layer_copy[k] = layer[k];
             
             /* 4.2.2. Update layer using the ancillary values.
-             Skip updating the first and last positions */
-            #pragma omp parallel for
+               Skip updating the first and last positions */
+            #pragma omp for schedule(static)
             for( k=1; k<layer_size-1; k++ )
                 layer[k] = ( layer_copy[k-1] + layer_copy[k] + layer_copy[k+1] ) / 3;
             
-            
+
+            // Initialize the local maximum just in case
+            local_maximum = -1e5;
+            local_position = -1;
+
             /* 4.3. Locate the maximum value in the layer, and its position */
-            for( k=1; k<layer_size-1; k++ ) {
+            #pragma omp for schedule(static)
+            for( k=1; k<layer_size-1; k++ )
+            {
                 /* Check it only if it is a local maximum */
-                if ( layer[k] > layer[k-1] && layer[k] > layer[k+1] ) {
+                if ( layer[k] > layer[k-1] && layer[k] > layer[k+1] )
+                {
+                    if ( layer[k] > local_maximum )
                     {
-                        if ( layer[k] > maximum[i] ) {
-                            maximum[i] = layer[k];
-                            positions[i] = k;
-                        }
+                        // Each thread will have their own maximum
+                        local_maximum = layer[k];
+                        local_position = k;
                     }
                 }
             }
-        }
-    /* } */
-    /* END: Do NOT optimize/parallelize the code below this point */
 
+            // Initialize global maximum (notice higher value than local
+            // maximum to not enter the if statement in the critical)
+            global_maximum = -1e4;
+            global_position = -1;
+
+            /* Here we find the global maximum among all the threads */
+            #pragma omp critical
+            {
+                if (local_maximum > global_maximum)
+                {
+                    global_maximum = local_maximum;
+                    global_position = local_position;
+                    maximum[i] = global_maximum;
+                    positions[i] = global_position;
+                }
+            }
+        }
+    }
+
+    /* END: Do NOT optimize/parallelize the code below this point */
     /* 5. End time measurement */
     ttotal = cp_Wtime() - ttotal;
 
     /* 6. DEBUG: Plot the result (only for layers up to 35 points) */
-    #ifdef DEBUG
+#ifdef DEBUG
     debug_print( layer_size, layer, positions, maximum, num_storms );
-    #endif
+#endif
 
     /* 7. Results output, used by the Tablon online judge software */
     printf("\n");
